@@ -1,12 +1,10 @@
 # -*- coding: utf-8 -*-
 """
 中国上市公司数字化测评平台
-GitHub 版 - 相对路径 + 砖红主题
+本地桌面版 – 直接放“大表”文件夹
 """
 # -------------------- 1. 标准库 --------------------
-import os
 import warnings
-import traceback
 import random
 from pathlib import Path
 
@@ -21,11 +19,8 @@ warnings.filterwarnings("ignore")
 pd.set_option('display.max_columns', None)
 pd.set_option('display.width', 1000)
 
-# -------------------- 4. 相对路径配置 --------------------
-# 仓库根目录
-ROOT = Path(__file__).resolve().parent
-DATA_DIR = ROOT / "data"
-EXCEL_FILE = DATA_DIR / "中国上市企业数字化转型指数（2007-2020）(1).xlsx"
+# -------------------- 4. 路径：当前文件所在目录 --------------------
+EXCEL_FILE = Path(__file__).with_name("中国上市企业数字化转型指数（2007-2020）(1).xlsx")
 
 # -------------------- 5. 主题配色 --------------------
 THEMES = {
@@ -61,26 +56,37 @@ def load_data():
         st.error(f"缺少列: {miss}")
         return pd.DataFrame()
     df = df.dropna(subset=["证券代码", "股票简称", "年份"])
-    df["年份"] = pd.to_numeric(df["年份"], errors="coerce").astype(int)
-    tech = ["人工智能技术", "大数据技术", "云计算技术", "区块链技术"]
-    for c in tech:
+    df["年份"] = pd.to_numeric(df["年份"], errors="coerce").astype("Int64")
+    tech_cols = ["人工智能技术", "大数据技术", "云计算技术", "区块链技术"]
+    for c in tech_cols:
         df[c] = pd.to_numeric(df[c], errors="coerce").fillna(0)
-    df["技术总分"] = df[tech].sum(axis=1)
+    df["技术总分"] = df[tech_cols].sum(axis=1)
     df["转型强度"] = pd.to_numeric(df["数字化转型"], errors="coerce").fillna(0)
-    df["量化评分"] = (df["转型强度"] / df["转型强度"].max() * 100).round(2)
+    max_trans = df["转型强度"].max()
+    if max_trans == 0:
+        df["量化评分"] = 0.0
+    else:
+        df["量化评分"] = (df["转型强度"] / max_trans * 100).round(2)
     return df.sort_values(["证券代码", "年份"]).reset_index(drop=True)
 
 # -------------------- 8. 可视化 --------------------
 def trend_fig(df, code=None):
-    data = df[df["证券代码"] == code] if code else df.groupby("年份")["量化评分"].mean().reset_index()
+    if code:
+        data = df[df["证券代码"] == code]
+        name = data["股票简称"].iloc[0]
+    else:
+        data = df.groupby("年份")["量化评分"].mean().reset_index()
+        name = "整体平均"
     fig = go.Figure()
     fig.add_trace(go.Scatter(
         x=data["年份"], y=data["量化评分"],
         mode="lines+markers", name="评分",
         line=dict(color=THEMES[st.session_state.theme]["primary"], width=3)
     ))
-    name = data["股票简称"].iloc[0] if code else "整体平均"
-    fig.update_layout(title=f"{name} 数字化转型趋势", xaxis_title="年份", yaxis_title="评分", height=400)
+    fig.update_layout(
+        title=f"{name} 数字化转型趋势",
+        xaxis_title="年份", yaxis_title="评分", height=400
+    )
     return fig
 
 def radar_fig(df, code):
@@ -118,7 +124,14 @@ def show_home(df):
 def show_company(df):
     st.markdown("### 🔍 企业分析")
     opts = [f"{c} - {df[df['证券代码']==c]['股票简称'].iloc[0]}" for c in sorted(df["证券代码"].unique())]
-    sel = st.selectbox("选择企业", opts)
+    # 随机企业按钮
+    if st.button("🎲 随机企业"):
+        st.session_state.rand_code = random.choice(list(df["证券代码"].unique()))
+    if "rand_code" in st.session_state:
+        default_idx = next(i for i, o in enumerate(opts) if str(st.session_state.rand_code) in o)
+    else:
+        default_idx = 0
+    sel = st.selectbox("选择企业", opts, index=default_idx)
     code = int(sel.split(" - ")[0])
     comp = df[df["证券代码"] == code]
     if comp.empty:
@@ -137,17 +150,12 @@ def main():
     df = load_data()
     with st.sidebar:
         st.markdown("### 🎛️ 导航")
-        page = st.radio("", ["首页", "企业分析"])
-        if st.button("🎲 随机企业"):
-            st.session_state.rand_code = random.choice(list(df["证券代码"].unique()))
+        page = st.radio("", ["首页", "企业分析"], index=0 if st.session_state.page == "首页" else 1)
+        st.session_state.page = page
     if page == "首页":
         show_home(df)
     else:
         show_company(df)
 
 if __name__ == "__main__":
-    try:
-        main()
-    except Exception as e:
-        st.error("运行出错")
-        st.error(traceback.format_exc())
+    main()
