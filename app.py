@@ -1,32 +1,31 @@
 # -*- coding: utf-8 -*-
 """
 中国上市公司数字化测评平台
-完整功能版 - 砖红主题优化
+GitHub 版 - 相对路径 + 砖红主题
 """
-
 # -------------------- 1. 标准库 --------------------
 import os
-import io
 import warnings
 import traceback
 import random
+from pathlib import Path
 
 # -------------------- 2. 第三方库 --------------------
 import streamlit as st
 import pandas as pd
 import numpy as np
 import plotly.graph_objects as go
-import plotly.express as px
 
 # -------------------- 3. 全局配置 --------------------
 warnings.filterwarnings("ignore")
 pd.set_option('display.max_columns', None)
 pd.set_option('display.width', 1000)
 
-# -------------------- 4. 路径配置 --------------------
-DESKTOP_PATH = r"C:\Users\30630\Desktop\大表"
-EXCEL_NAME = "中国上市企业数字化转型指数（2007-2020）(1).xlsx"
-EXCEL_PATH = os.path.join(DESKTOP_PATH, EXCEL_NAME)
+# -------------------- 4. 相对路径配置 --------------------
+# 仓库根目录
+ROOT = Path(__file__).resolve().parent
+DATA_DIR = ROOT / "data"
+EXCEL_FILE = DATA_DIR / "中国上市企业数字化转型指数（2007-2020）(1).xlsx"
 
 # -------------------- 5. 主题配色 --------------------
 THEMES = {
@@ -51,17 +50,21 @@ if "page" not in st.session_state:
 # -------------------- 7. 加载数据 --------------------
 @st.cache_data(ttl=3600)
 def load_data():
-    if not os.path.exists(EXCEL_PATH):
-        st.error("数据文件不存在，请检查路径"); return pd.DataFrame()
-    df = pd.read_excel(EXCEL_PATH)
+    if not EXCEL_FILE.exists():
+        st.error(f"数据文件不存在，请确认路径：{EXCEL_FILE}")
+        return pd.DataFrame()
+    df = pd.read_excel(EXCEL_FILE)
     req = ["证券代码", "股票简称", "年份", "行业名称", "省份",
            "人工智能技术", "大数据技术", "云计算技术", "区块链技术", "数字化转型"]
     miss = [c for c in req if c not in df.columns]
-    if miss: st.error(f"缺少列: {miss}"); return pd.DataFrame()
+    if miss:
+        st.error(f"缺少列: {miss}")
+        return pd.DataFrame()
     df = df.dropna(subset=["证券代码", "股票简称", "年份"])
     df["年份"] = pd.to_numeric(df["年份"], errors="coerce").astype(int)
     tech = ["人工智能技术", "大数据技术", "云计算技术", "区块链技术"]
-    for c in tech: df[c] = pd.to_numeric(df[c], errors="coerce").fillna(0)
+    for c in tech:
+        df[c] = pd.to_numeric(df[c], errors="coerce").fillna(0)
     df["技术总分"] = df[tech].sum(axis=1)
     df["转型强度"] = pd.to_numeric(df["数字化转型"], errors="coerce").fillna(0)
     df["量化评分"] = (df["转型强度"] / df["转型强度"].max() * 100).round(2)
@@ -71,9 +74,11 @@ def load_data():
 def trend_fig(df, code=None):
     data = df[df["证券代码"] == code] if code else df.groupby("年份")["量化评分"].mean().reset_index()
     fig = go.Figure()
-    fig.add_trace(go.Scatter(x=data["年份"], y=data["量化评分"],
-                             mode="lines+markers", name="评分",
-                             line=dict(color=THEMES[st.session_state.theme]["primary"], width=3)))
+    fig.add_trace(go.Scatter(
+        x=data["年份"], y=data["量化评分"],
+        mode="lines+markers", name="评分",
+        line=dict(color=THEMES[st.session_state.theme]["primary"], width=3)
+    ))
     name = data["股票简称"].iloc[0] if code else "整体平均"
     fig.update_layout(title=f"{name} 数字化转型趋势", xaxis_title="年份", yaxis_title="评分", height=400)
     return fig
@@ -82,9 +87,14 @@ def radar_fig(df, code):
     d = df[df["证券代码"] == code].iloc[-1]
     cats = ["人工智能技术", "大数据技术", "云计算技术", "区块链技术"]
     vals = [d[c] for c in cats]
-    fig = go.Figure(go.Scatterpolar(r=vals, theta=cats, fill="toself",
-                                    line_color=THEMES[st.session_state.theme]["primary"]))
-    fig.update_layout(title=f"{d['股票简称']} 技术维度", polar=dict(radialaxis=dict(range=[0, max(vals)*1.2])), height=400)
+    fig = go.Figure(go.Scatterpolar(
+        r=vals, theta=cats, fill="toself",
+        line_color=THEMES[st.session_state.theme]["primary"]
+    ))
+    fig.update_layout(
+        title=f"{d['股票简称']} 技术维度",
+        polar=dict(radialaxis=dict(range=[0, max(vals)*1.2])), height=400
+    )
     return fig
 
 # -------------------- 9. 页面 --------------------
@@ -94,7 +104,8 @@ def show_home(df):
         <h1>🏢 中国上市公司数字化测评平台</h1>
         <p>2007-2020 年上市公司年报数据深度分析</p>
     </div>""", unsafe_allow_html=True)
-    if df.empty: return
+    if df.empty:
+        return
     total = df["证券代码"].nunique()
     st.markdown(f"""<div class='custom-card'>
         <h3>📈 数据概览</h3>
@@ -110,11 +121,14 @@ def show_company(df):
     sel = st.selectbox("选择企业", opts)
     code = int(sel.split(" - ")[0])
     comp = df[df["证券代码"] == code]
-    if comp.empty: return
+    if comp.empty:
+        return
     st.markdown(f"#### {comp['股票简称'].iloc[0]}（{code}）")
     col1, col2 = st.columns(2)
-    with col1: st.plotly_chart(trend_fig(df, code), use_container_width=True)
-    with col2: st.plotly_chart(radar_fig(df, code), use_container_width=True)
+    with col1:
+        st.plotly_chart(trend_fig(df, code), use_container_width=True)
+    with col2:
+        st.plotly_chart(radar_fig(df, code), use_container_width=True)
     st.markdown("#### 历年数据")
     st.dataframe(comp[["年份", "量化评分", "技术总分"] + ["人工智能技术", "大数据技术", "云计算技术", "区块链技术"]].round(2))
 
@@ -135,4 +149,5 @@ if __name__ == "__main__":
     try:
         main()
     except Exception as e:
-        st.error("运行出错"); st.error(traceback.format_exc())
+        st.error("运行出错")
+        st.error(traceback.format_exc())
